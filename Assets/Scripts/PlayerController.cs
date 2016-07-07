@@ -7,7 +7,7 @@ public class PlayerController : MonoBehaviour {
 	float moveSpeed = 12;
 	Controller2D controller;
 
-    float accelerationTimeAirborne = 0.2f;
+    float accelerationTimeAirborne = 0.5f;
     float accelerationTimeGrounded = 0.2f;
     float velocityXSmoothing;
     float velocityYSmoothing;
@@ -15,6 +15,7 @@ public class PlayerController : MonoBehaviour {
 
     //Jumping
     int numberOfJumps = 1;
+
     KeyCode jump = KeyCode.Space;
     //adjust the minimum jump height
     public float jumpHeight = 3;
@@ -32,7 +33,7 @@ public class PlayerController : MonoBehaviour {
     public LayerMask mask;
     float grappleTime = .5f;
     float grappleVelocity;
-    float stopGrapple = 2.0f;
+    float stopGrapple = 2.3f;
     Vector2 destination;
     bool grappling;
     float distance;
@@ -97,6 +98,14 @@ public class PlayerController : MonoBehaviour {
         	velocity.y += jumpVelocity/extraHeightFactor;
         }
 
+        if((controller.collisions.left || controller.collisions.right) && !controller.collisions.below)
+        {
+            if(Input.GetKeyDown(jump))
+            {
+                velocity.x = (controller.collisions.left)? jumpVelocity *.5f: jumpVelocity *-.5f;
+                velocity.y = jumpVelocity *.5f;
+            }
+        }
         //actually move the player the correct amount
         controller.Move(velocity * Time.deltaTime);
 	}
@@ -121,8 +130,9 @@ public class PlayerController : MonoBehaviour {
                 //check to see what kind of object you hit
                 if(objectHit.tag == "Grapplable")
                 {
+                    //velocity = new Vector2(0,0);
                     distance = hit.distance;
-                    grappleVelocity = (2*hit.distance)/grappleTime;
+                    //grappleVelocity = (2*hit.distance)/grappleTime;
                     destination = objectHit.transform.position;
                     pos = new Vector2(this.transform.position.x, this.transform.position.y);
                     grappling =true;
@@ -141,16 +151,21 @@ public class PlayerController : MonoBehaviour {
 
     void grappleMove()
     {
+        if(Input.GetKeyDown(jump))
+        {
+            grappling = false;
+            return;
+        }
         //while grappling get the position of the player currently
         Vector2 currentPosition = new Vector2(this.transform.position.x, this.transform.position.y);
         
         //set its velocity in x and y to move towards the grapple location
         //Change the moveSpeed *1.5f to grappleVelocity to see constant time
-        float targetVelocityX = ((destination.x - pos.x)/distance) * moveSpeed * 1.5f;
+        float targetVelocityX = ((destination.x - currentPosition.x)/distance) * moveSpeed * 1.5f;
         velocity.x = Mathf.SmoothDamp(velocity.x, targetVelocityX, ref velocityXSmoothing, (controller.collisions.below) ? accelerationTimeGrounded : accelerationTimeAirborne);
 
 
-        float targetVelocityY = ((destination.y - pos.y)/distance) * moveSpeed * 1.5f;
+        float targetVelocityY = ((destination.y - currentPosition.y)/distance) * moveSpeed * 1.5f;
         velocity.y = Mathf.SmoothDamp(velocity.y, targetVelocityY, ref velocityYSmoothing, (controller.collisions.below) ? accelerationTimeGrounded : accelerationTimeAirborne);
         
         //Uncomment these two lines if you want to see without damping(instant acceleration)
@@ -159,11 +174,13 @@ public class PlayerController : MonoBehaviour {
 
         //prints the x and y velocity to the console
         Debug.Log(velocity.x + "  " + velocity.y);
+        Debug.Log((destination - currentPosition).magnitude);
         //moves player
         controller.Move(velocity * Time.deltaTime);
         //if the player is within an acceptable distance stop grappling
         if((destination - currentPosition).magnitude < stopGrapple)
         {
+            Debug.Log("Done Grappling");
             grappling = false;
         }
     }
