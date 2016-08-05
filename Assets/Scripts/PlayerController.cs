@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class PlayerController : MonoBehaviour {
 
@@ -7,7 +8,19 @@ public class PlayerController : MonoBehaviour {
 	float moveSpeed = 12;
 	Controller2D controller;
 
-    float accelerationTimeAirborne = 0.5f;
+    //Delay time for determining a "double tap has occured"
+    float tapDelay = 1f;
+    bool doubletap = false;
+    bool firstTap = false;
+    KeyCode key;
+    List<KeyCode> keys = new List<KeyCode>();
+
+    //Dash
+    float speedMultiple = 3f;
+    float dashTime = .15f;
+    bool dashing = false;
+
+    float accelerationTimeAirborne = 0.4f;
     float accelerationTimeGrounded = 0.2f;
     float velocityXSmoothing;
     float velocityYSmoothing;
@@ -35,14 +48,33 @@ public class PlayerController : MonoBehaviour {
     float grappleVelocity;
     float stopGrapple = 2.3f;
     Vector2 destination;
-    bool grappling;
+    bool grappling= false;
+    bool pulling= false;
     float distance;
     Vector2 pos;
+
+
+    BasicEnemy enemy;
+    //Attacking cone implementation
+    bool canAttack = true;
+    //determines the angle of the cone in radians
+    float theta = .785398f;
+    Transform attackPoint;
+    //
+    float attackRange = 3f;
+    public LayerMask attackMask;
+
+
+    //Kicking Things
+    public KeyCode kick = KeyCode.W;
 
 	// Use this for initialization
     // The start function runs only once at the beggining of the scene nothing here should need adjusting
 	void Start () {
 		controller = GetComponent<Controller2D>();
+
+        keys.Add(KeyCode.D);
+        keys.Add(KeyCode.A);
 
 		gravity = -(2 * jumpHeight) / Mathf.Pow(timeToJumpApex, 2);
         jumpVelocity = Mathf.Abs(gravity) * timeToJumpApex;
@@ -50,10 +82,13 @@ public class PlayerController : MonoBehaviour {
         controller.collisionMask =  ~(1 << LayerMask.NameToLayer("Player"));
 	
         grapplePoint = this.transform.Find("GrapplePoint");
+        attackPoint = this.transform.Find("AttackPoint");
     }
 	
 	// Update is called once per frame
 	void Update () {
+
+        DoubleTap();
 
         if(!grappling)
         {
@@ -63,11 +98,76 @@ public class PlayerController : MonoBehaviour {
         {
             grappleMove();
         }
+        Kick();
         Grapple();
+        Attack();
 	}
+
+    void DoubleTap()
+    {
+        doubletap = false;
+        if(Input.anyKey && !Input.GetKey(key))
+        {
+            firstTap = false;
+            doubletap = false;
+        }
+        if(doubletap && !Input.GetKey(key))
+        {
+            doubletap = false;
+            //firstTap = false;
+        }
+
+        else if(doubletap && Input.GetKey(key))
+        {
+            firstTap = true;
+        }
+
+        if(!firstTap)
+        {
+            foreach(KeyCode k in keys)
+            {
+                if(Input.GetKey(k))
+                {
+                    key = k;
+                    firstTap = true;
+                   // Debug.Log("FirstTap " + key);
+                }
+            }
+        }
+        else if( firstTap && Input.GetKeyUp(key))
+        {
+            StartCoroutine(WaitandSet(tapDelay));
+        }
+        else if(firstTap && Input.GetKeyDown(key))
+        {   
+            doubletap = true;
+            //Debug.Log("DoubleTap");
+        }
+
+        //Debug.Log(firstTap + "   " +doubletap);
+    }
+
+    IEnumerator WaitandSet(float time)
+    {
+        yield return new WaitForSeconds(time);
+        firstTap = false;
+    }
+
+    IEnumerator Dash(float time)
+    {
+        moveSpeed = moveSpeed * speedMultiple;
+        yield return new WaitForSeconds(time);
+        moveSpeed = moveSpeed / speedMultiple;
+        dashing = false;
+    }
 
 	void Move()
 	{
+        if(doubletap && !dashing)
+        {
+            dashing = true;
+            StartCoroutine(Dash(dashTime));
+        }
         //If the player touches the something above or below them set vertical move to 0
 		if (controller.collisions.above)
         {
@@ -110,10 +210,47 @@ public class PlayerController : MonoBehaviour {
         controller.Move(velocity * Time.deltaTime);
 	}
 
+    void Attack()
+    {   //cone impementation
+        //If the player left clicks
+        if(Input.GetMouseButton(0) && canAttack)
+        {
+            Vector2 attackStart = new Vector2(attackPoint.position.x, attackPoint.position.y);
+            //for each angle from theta/2 to -theta/2 in increments of five, raycast to check for collisions with enemies in range
+            //if any hit debug to console for now, later it will tell the enemies to take damage
+            for(float i=theta/2; i>-theta/2; i-=.0872f)
+            {
+                Vector2 temp = new Vector2(1, Mathf.Tan(i));
+                Debug.Log(Mathf.Tan(i));
+                RaycastHit2D hit = Physics2D.Raycast(attackStart, temp, attackRange, attackMask);
+
+                if(hit && hit.transform.tag == "Enemy")
+                {
+                    Debug.Log("you hit the enemy!");
+                }
+            }
+        }
+    }
+
+    void Kick()
+    {
+        if(Input.GetKeyDown(kick))
+            {
+                
+                foreach (Controller2D.collidingObject obje in controller.GetObjects())
+                {
+                    if(obje.obj.tag == "Kickable")
+                    {
+                        Debug.Log("Kicked");
+                    }
+                }
+            }
+    }
+
     void Grapple()
     {
-        //if the player left clicks
-        if(Input.GetMouseButtonDown(0))
+        //if the player Right clicks
+        if(Input.GetMouseButtonDown(1) && !pulling && !grappling)
         {
             //get the mouse position and the grapple position
             Vector2 mousePos = new Vector2(Camera.main.ScreenToWorldPoint(Input.mousePosition).x, Camera.main.ScreenToWorldPoint(Input.mousePosition).y);
@@ -139,13 +276,21 @@ public class PlayerController : MonoBehaviour {
                 }
                 else if(objectHit.tag == "Pullable")
                 {
-                    objectHit.transform.position = this.transform.position;
+                    pulling = true;
+                    enemy = objectHit.GetComponentInParent<BasicEnemy>();
+                    enemy.setPull(this);
+                    //objectHit.transform.position = this.transform.position;
                 }
             }
             //draw a line to visually debug
             Debug.DrawLine(grappleStart, mousePos);
         }
 
+        else if(pulling && Input.GetMouseButtonDown(1))
+            {
+                pulling = false;
+                enemy.stopPull();
+            }
         
     }
 
@@ -184,4 +329,20 @@ public class PlayerController : MonoBehaviour {
             grappling = false;
         }
     }
+
+    public Vector2 getPosition()
+    {
+        return new Vector2(this.transform.position.x, this.transform.position.y);
+    }
+
+    public float getSpeed()
+    {
+        return velocity.magnitude;
+    }
+
+    public void setPulling(bool b)
+    {
+        pulling = b;
+    }
+
 }

@@ -1,12 +1,23 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 
 public class Controller2D : Raycast2D {
 
 
     public CollisionInfo collisions;
-
+    public struct collidingObject
+    {
+        public collidingObject(string direction, Transform obj_)
+        {
+            dir = direction;
+            obj = obj_;
+        }
+        public string dir;
+        public Transform obj;
+    }
+    public HashSet<collidingObject> objs;
     [HideInInspector]
     public Vector2 playerInput;
 
@@ -16,7 +27,7 @@ public class Controller2D : Raycast2D {
     {
         UpdateRaycastOrigins();
         collisions.Reset();
-
+        objs = new HashSet<collidingObject>();
         if (velocity.x != 0)
             HorizontalCollisions(ref velocity);
         if (velocity.y != 0)
@@ -44,6 +55,12 @@ public class Controller2D : Raycast2D {
 
                 collisions.left = directionX == -1;
                 collisions.right = directionX == 1;
+                string dir = (collisions.left)?"left":"right";
+                collidingObject obj = new collidingObject(dir, hit.transform);
+                if(!objs.Contains(obj))
+                {
+                    objs.Add(obj);
+                }
             }
         }
     }
@@ -67,11 +84,21 @@ public class Controller2D : Raycast2D {
 
                 collisions.below = directionY == -1;
                 collisions.above = directionY == 1;
+                string dir = (collisions.below)?"down":"up";
+                collidingObject obj = new collidingObject(dir, hit.transform);
+                if(!objs.Contains(obj))
+                {
+                    objs.Add(obj);
+                }
+
             }
         }
     }
 
-
+    public HashSet<collidingObject> GetObjects()
+    {
+        return objs;
+    }
 
     public struct CollisionInfo
     {
